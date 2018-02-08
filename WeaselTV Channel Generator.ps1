@@ -1,5 +1,5 @@
 # WEASEL TV channel generator
-# 
+# testing git connection
 # Required: https://dev.mysql.com/downloads/connector/net/
 
 Clear-Host #start with a blank console
