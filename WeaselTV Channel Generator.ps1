@@ -1,6 +1,7 @@
-# WEASEL TV channel generator
-#
-# Required: https://dev.mysql.com/downloads/connector/net/
+<#
+WEASEL TV channel generator
+Required: https://dev.mysql.com/downloads/connector/net/
+#>
 
 Clear-Host #start with a blank console
 
@@ -81,23 +82,11 @@ $port = '3306'
 # Connect to MySQL Database 
 $conn = Connect-MySQL $user $pass $MySQLHost $port $database
 
-
-
-
-
-
-
-
 # Queries
 $sQueryNetworks = 'Select Distinct C14 From tvshow ORDER BY lower( C14 );'
 $sQueryIndex = 'Select Distinct C00, tvshow.idShow From tvshow ORDER BY lower( C00 );'
 $sQueryNetworkEps = 'SELECT episode.c09, episode.c12, episode.c13, episode.c00, episode.c01, episode.c18, tvshow.c00 FROM episode INNER JOIN tvshow ON episode.idShow=tvshow.idShow WHERE tvshow.c14 LIKE ' # tvshow.C00="Show Title"  tvshow.C14="Studio"
 $sQueryEpisodes = 'SELECT c09, c12, c13, c00, c01, c18  FROM episode WHERE episode.idShow = ' # C09="Episode length in minutes (converted to sec in DB)"  C12="Season Number"  C13="Episode Number"  C00="Episode Title" C01="Plot Summary"  C18="Path to episode file" 
-
-
-# Network
-#$aTvNetworks = Invoke-MySQLQuery $conn $sQueryNetworks
-#$aTvNetworks | Format-Table
 
 # Query data
 $aTvNetworks = Invoke-MySQLQuery $conn $sQueryNetworks     # TV Networks
@@ -125,17 +114,18 @@ foreach ($index in $aTvIndex) {
     #Write-Host ($index.C00 + " - " + $index.idShow)
 }
 
-#Write-Host ($aTvShowEpisodes | Out-String)
-#Write-Host ($aTvShowEpisodes["Drawn Together"] | Out-String)
+<# Examples for testing:
+Write-Host ($aTvShowEpisodes | Out-String)
+Write-Host ($aTvShowEpisodes["Drawn Together"] | Out-String)
+Write-Host ($aNetworkEpisodes | Out-String)
+Write-Host ($aNetworkEpisodes["ABC (US)"] | Out-String)
+#>
 
-#Write-Host ($aNetworkEpisodes | Out-String)
-#Write-Host ($aNetworkEpisodes["ABC (US)"] | Out-String)
-
+# Temp file management (remove old temp dirs and recreate blank structure)
 $aPaths = @()                                                             # Array of paths to remove and recreate empty
 $aPaths += , ($env:TEMP + "\PTV")
 $aPaths += , ($env:TEMP + "\PTV\cache")
 $aPaths += , ($env:TEMP + "\MoviePlaylists")
-
 foreach ($sPath in $aPaths) {
     if (Test-Path -PathType Container $sPath) {
         # $sPath already exists
@@ -148,71 +138,80 @@ foreach ($sPath in $aPaths) {
     }
 }
 
+# Build our settings2.xml string to later be written to file
+$sS2XML = ""                                                              # Create openining XML
+$sS2XML += "<settings>"
+$sS2XML += "`n"
+$sS2XML += "    <setting id=`"Version`" value=`"2.4.5`" />"
+$sS2XML += "`n"
+
+# Parse TV networks and enter channel entries to settings2.xml temp string
+$iCount = 1
+foreach ($network in $aTvNetworks) {
+    if ([string]::IsNullOrEmpty($network.C14)) {continue}		          # Skip blanks (first entry from query results always seems to be blank)
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"1`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"" + $network.C14 + "`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_rulecount`" value=`"1`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_rule_1_id`" value=`"12`" />")
+    $sS2XML += "`n"
+    $iCount++
+}
+
+
+
+
+
+
+# Closing xml string
+$sS2XML += "    <setting id=`"LastResetTime`" value=`"1495239376`" />"
+$sS2XML += "`n"
+$sS2XML += "    <setting id=`"LastExitTime`" value=`"1495239391`" />"
+$sS2XML += "`n"
+$sS2XML += "</settings>"
+
+
+
+
+
+<# Example of a single network TV entry
+
+    <setting id="Channel_1_type" value="1" />
+    <setting id="Channel_1_1" value="A&E" />
+    <setting id="Channel_1_changed" value="False" />
+    <setting id="Channel_1_time" value="35" />
+    <setting id="Channel_1_rulecount" value="1" />
+    <setting id="Channel_1_rule_1_id" value="12" />
+
+#>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<#
+# Remove current settings2.xml if it exists.  It shouldn't, but double checking.
 $sFile = ($env:TEMP + "\PTV\settings2.xml")
 if (Test-Path -PathType Leaf $sFile) {
     # $sPath already exists
     Remove-Item $sFile -Force                                         # Delete $sFile
 }
+#>
 
-#Out-File -FilePath $sFilee WriteLine('<settings>')
-#WriteLine('    <setting id="Version" value="2.4.3" />')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Cleanup
 Disconnect-MySQL($conn)
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Test query
-#$query = "SELECT Distinct C22 FROM movie;"
-#$result = Invoke-MySQLQuery $conn $query
-#Write-Host ("Found " + $result.rows.count + " rows...")
-#$result | Format-Table
-
-#Write-Host ($result.gettype())
-
-#$result.foreach({Write-Host($_.ItemArray)})
-
-#Write-Host $result[1]
-
-#$result.GetType()
-#$result | Get-Help
-#$result | Get-Command
-#$result | Get-Member
-#($result | Get-Member)[-1].Name
-
-
-#foreach ($element in $result) {
-#	$element
-#}
-
-
-
-
-
-
-
-
