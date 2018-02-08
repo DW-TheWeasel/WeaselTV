@@ -154,7 +154,8 @@ if (Test-Path -PathType Leaf $sFile) {
     Remove-Item $sFile -Force                                         # Delete $sFile
 }
 
-
+Out-File -FilePath $sFilee WriteLine('<settings>')
+WriteLine('    <setting id="Version" value="2.4.3" />')
 
 
 
