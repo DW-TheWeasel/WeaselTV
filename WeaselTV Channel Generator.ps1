@@ -114,13 +114,6 @@ foreach ($index in $aTvIndex) {
     #Write-Host ($index.C00 + " - " + $index.idShow)
 }
 
-<# Examples for testing:
-Write-Host ($aTvShowEpisodes | Out-String)
-Write-Host ($aTvShowEpisodes["Drawn Together"] | Out-String)
-Write-Host ($aNetworkEpisodes | Out-String)
-Write-Host ($aNetworkEpisodes["ABC (US)"] | Out-String)
-#>
-
 # Temp file management (remove old temp dirs and recreate blank structure)
 $aPaths = @()                                                             # Array of paths to remove and recreate empty
 $aPaths += , ($env:TEMP + "\PTV")
@@ -176,6 +169,9 @@ $sS2XML += "    <setting id=`"LastExitTime`" value=`"1495239391`" />"
 $sS2XML += "`n"
 $sS2XML += "</settings>"
 
+
+# Preview the settings2 string for testing
+Write-Host ($sS2XML | Out-String)
 
 
 
