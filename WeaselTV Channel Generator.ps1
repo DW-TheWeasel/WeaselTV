@@ -1,5 +1,5 @@
 # WEASEL TV channel generator
-# testing git connection
+#
 # Required: https://dev.mysql.com/downloads/connector/net/
 
 Clear-Host #start with a blank console
@@ -153,6 +153,10 @@ if (Test-Path -PathType Leaf $sFile) {
     # $sPath already exists
     Remove-Item $sFile -Force                                         # Delete $sFile
 }
+
+
+
+
 
 
 
