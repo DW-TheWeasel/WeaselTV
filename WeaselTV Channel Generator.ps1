@@ -71,6 +71,23 @@ function Invoke-MySQLScalar([string]$query) {
     $cmd.ExecuteScalar()                                                        # Execute command
 }
 
+function Get-MediaLength ([string]$path) {
+    # Returns media lenth (duration) in seconds
+    # Cleanup filepath for windows
+    $path = $path.Replace('smb:','')
+    $path = $path.Replace('/', '\')
+    # Get Length
+    $Folder = (get-item $path).Directory.FullName
+    $File = (get-item $path).Name
+    $LengthColumn = 27
+    $objShell = New-Object -ComObject Shell.Application 
+    $objFolder = $objShell.Namespace($Folder)
+    $objFile = $objFolder.ParseName($File)
+    $Length = $objFolder.GetDetailsOf($objFile, $LengthColumn)
+    $LengthInSec = [TimeSpan]::Parse($Length).TotalSeconds
+    $objShell.Dispose
+    return $LengthInSec
+}
 
 # Connection Variables 
 $user = 'kodi' 
@@ -86,7 +103,7 @@ $conn = Connect-MySQL $user $pass $MySQLHost $port $database
 $sQueryNetworks = 'Select Distinct C14 From tvshow ORDER BY lower( C14 );'
 $sQueryIndex = 'Select Distinct C00, tvshow.idShow From tvshow ORDER BY lower( C00 );'
 $sQueryNetworkEps = 'SELECT episode.c09, episode.c12, episode.c13, episode.c00, episode.c01, episode.c18, tvshow.c00 FROM episode INNER JOIN tvshow ON episode.idShow=tvshow.idShow WHERE tvshow.c14 LIKE ' # tvshow.C00="Show Title"  tvshow.C14="Studio"
-$sQueryEpisodes = 'SELECT c09, c12, c13, c00, c01, c18  FROM episode WHERE episode.idShow = ' # C09="Episode length in minutes (converted to sec in DB)"  C12="Season Number"  C13="Episode Number"  C00="Episode Title" C01="Plot Summary"  C18="Path to episode file" 
+$sQueryEpisodes = 'SELECT c09, c12, c13, c00, c01, c18  FROM episode WHERE episode.idShow = ' # C09="Episode length in minutes (depricated, need to get media info directly)"  C12="Season Number"  C13="Episode Number"  C00="Episode Title" C01="Plot Summary"  C18="Path to episode file" 
 
 # Query data
 $aTvNetworks = Invoke-MySQLQuery $conn $sQueryNetworks     # TV Networks
@@ -157,10 +174,28 @@ foreach ($network in $aTvNetworks) {
     $iCount++
 }
 
+# Parse TV series and enter channel entries to settings2.xml temp string
+$iCount = 100
+foreach ($tvShow in $aTvShows) {
+    if ([string]::IsNullOrEmpty($tvShow.c00)) {continue}		          # Skip blanks (first entry from query results always seems to be blank)
+    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_type`" value=`"6`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_1`" value=`"" + $tvShow.c00 + "`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_rulecount`" value=`"1`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_rule_1_id`" value=`"12`" />")
+    $sS2XML += "`n"
+    $iCount++
+}
 
+# Parse movie channels and enter them in to settings2.xml temp string
 
-
-
+# on hold while getting most common genres until all movies are covered
 
 # Closing xml string
 $sS2XML += "    <setting id=`"LastResetTime`" value=`"1495239376`" />"
@@ -173,8 +208,17 @@ $sS2XML += "</settings>"
 # Preview the settings2 string for testing
 Write-Host ($sS2XML | Out-String)
 
+<# Testing video duration
 
+$Folder = 'C:\Path\To\Parent\Folder'
+$File = 'Video.mp4'
+$LengthColumn = 27
+$objShell = New-Object -ComObject Shell.Application 
+$objFolder = $objShell.Namespace($Folder)
+$objFile = $objFolder.ParseName($File)
+$Length = $objFolder.GetDetailsOf($objFile, $LengthColumn)
 
+#>
 
 <# Example of a single network TV entry
 
