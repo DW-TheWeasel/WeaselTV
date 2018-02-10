@@ -74,7 +74,7 @@ function Invoke-MySQLScalar([string]$query) {
 function Get-MediaLength ([string]$path) {
     # Returns media lenth (duration) in seconds
     # Cleanup filepath for windows
-    $path = $path.Replace('smb:','')
+    $path = $path.Replace('smb:', '')
     $path = $path.Replace('/', '\')
     # Get Length
     $Folder = (get-item $path).Directory.FullName
@@ -104,31 +104,60 @@ $sQueryNetworks = 'Select Distinct C14 From tvshow ORDER BY lower( C14 );'
 $sQueryIndex = 'Select Distinct C00, tvshow.idShow From tvshow ORDER BY lower( C00 );'
 $sQueryNetworkEps = 'SELECT episode.c09, episode.c12, episode.c13, episode.c00, episode.c01, episode.c18, tvshow.c00 FROM episode INNER JOIN tvshow ON episode.idShow=tvshow.idShow WHERE tvshow.c14 LIKE ' # tvshow.C00="Show Title"  tvshow.C14="Studio"
 $sQueryEpisodes = 'SELECT c09, c12, c13, c00, c01, c18  FROM episode WHERE episode.idShow = ' # C09="Episode length in minutes (depricated, need to get media info directly)"  C12="Season Number"  C13="Episode Number"  C00="Episode Title" C01="Plot Summary"  C18="Path to episode file" 
+$sQueryGenreCh = "SELECT 
+currentgenre, COUNT(*)
+FROM
+myvideos107.movie t1
+    JOIN
+(SELECT DISTINCT
+    genre.name AS currentgenre
+FROM
+    myvideos107.genre) t2 ON t1.c14 LIKE CONCAT('%', currentgenre, '%')
+WHERE
+t1.c22 NOT LIKE '%/Media/Video/Ad%'
+GROUP BY currentgenre
+ORDER BY COUNT(*) DESC
+LIMIT 15;" # Gets top 15 genres found in movie.c14 genre string (this is what smartplaylists use, so we need to use it instead of the genre table)
+$sQueryMoviesInGenre = "SELECT 
+*
+FROM
+    myvideos107.movie
+WHERE
+    myvideos107.movie.c22 NOT LIKE '%/Media/Video/Ad%'
+        AND myvideos107.movie.c14 LIKE '%???%'
+;"
+
 
 # Query data
-$aTvNetworks = Invoke-MySQLQuery $conn $sQueryNetworks     # TV Networks
-$aTvIndex = Invoke-MySQLQuery $conn $sQueryIndex           # TV Index
+$aTvNetworks = Invoke-MySQLQuery $conn $sQueryNetworks      # TV Networks
+$aTvIndex = Invoke-MySQLQuery $conn $sQueryIndex            # TV Index
+$aGenreList = Invoke-MySQLQuery $conn $sQueryGenreCh        # Top movie genres
+
+
+#Parse genre movie channels
+$aGenreCh = @{}
+foreach ($genre in $aGenreList) {
+    if ([string]::IsNullOrEmpty($genre.currentgenre)) {continue}		                              # Skip blanks (first entry from query results always seems to be blank)
+    $aTemp = Invoke-MySQLQuery $conn $sQueryMoviesInGenre.Replace('???',$genre.currentgenre)          # Temp array/query for all movies in a given genre from $aGenreList
+    $aGenreCh.Add($genre.currentgenre, $aTemp)                                                        # Add genre as key and array of movies for value
+}
 
 # Parse TV Networks, Network Episodes
 $aNetworkEpisodes = @{}                                                                               # TV Show Episodes by Network hashtable array (.c001="Show Name", .c00="Episode Name")
 foreach ($network in $aTvNetworks) {
-    if ([string]::IsNullOrEmpty($network.C14)) {continue}		                                          # Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($network.C14)) {continue}		                                      # Skip blanks (first entry from query results always seems to be blank)
     $sTemp = $sQueryNetworkEps + "'" + $network.C14 + "'"                                             # Build temp query for all TV Episodes for single Network by network.C14
     $aTemp = Invoke-MySQLQuery $conn $sTemp                                                           # Temp array/query for all TV Episodes for single Network by network.C14
     $aNetworkEpisodes.Add($network.C14, $aTemp)                                                       # Add network as key and array of episodes for value
-    #Write-Host $network.C14
 }
 
 # Parse TV Shows, TV Index, Show Episodes
 $aTvShowEpisodes = @{}                                                                                  # TV Show Episodes by idShow hashtable array (key="Show Name", .c00="Episode Name")
-$aTvShows = @()                                                                                         # TV Shows array
 foreach ($index in $aTvIndex) {
-    if ([string]::IsNullOrEmpty($index.C00) -And [string]::IsNullOrEmpty($index.idShow)) {continue}		  # Skip blanks (first entry from query results always seems to be blank)
-    $aTvShows += , $index.C00                                                                           # Add to TV shows array
+    if ([string]::IsNullOrEmpty($index.C00) -And [string]::IsNullOrEmpty($index.idShow)) {continue}		# Skip blanks (first entry from query results always seems to be blank)
     $sTemp = $sQueryEpisodes + $index.idShow + ";"                                                      # Build temp query for all TV Episodes for single show by idShow
     $aTemp = Invoke-MySQLQuery $conn $sTemp                                                             # Temp array/query for all TV Episodes for single show by idShow
     $aTvShowEpisodes.Add($index.C00, $aTemp)                                                            # Add TV show name as key and array of episodes for value
-    #Write-Host ($index.C00 + " - " + $index.idShow)
 }
 
 # Temp file management (remove old temp dirs and recreate blank structure)
@@ -176,26 +205,40 @@ foreach ($network in $aTvNetworks) {
 
 # Parse TV series and enter channel entries to settings2.xml temp string
 $iCount = 100
-foreach ($tvShow in $aTvShows) {
+foreach ($tvShow in $aTvIndex) {
     if ([string]::IsNullOrEmpty($tvShow.c00)) {continue}		          # Skip blanks (first entry from query results always seems to be blank)
-    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_type`" value=`"6`" />")
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"6`" />")
     $sS2XML += "`n"
-    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_1`" value=`"" + $tvShow.c00 + "`" />")
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"" + $tvShow.c00 + "`" />")
     $sS2XML += "`n"
-    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
     $sS2XML += "`n"
-    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
     $sS2XML += "`n"
-    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_rulecount`" value=`"1`" />")
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_rulecount`" value=`"1`" />")
     $sS2XML += "`n"
-    $sS2XML += ("<setting id=`"Channel_" + $iCount + "_rule_1_id`" value=`"12`" />")
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_rule_1_id`" value=`"12`" />")
     $sS2XML += "`n"
     $iCount++
 }
 
-# Parse movie channels and enter them in to settings2.xml temp string
+# Parse movie genre channels and enter them in to settings2.xml temp string
+$iCount = 900
+foreach ($genreCh in $aGenreCh.Keys) {
+    if ([string]::IsNullOrEmpty($genreCh)) {continue}		          # Skip blanks (first entry from query results always seems to be blank)
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"0`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"special://profile/playlists/video/" + $genreCh + ".xsp`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
+    $sS2XML += "`n"
+    $iCount++
+}
 
-# on hold while getting most common genres until all movies are covered
+#MOVIES BY YEAR NEXT
+
 
 # Closing xml string
 $sS2XML += "    <setting id=`"LastResetTime`" value=`"1495239376`" />"
@@ -204,54 +247,36 @@ $sS2XML += "    <setting id=`"LastExitTime`" value=`"1495239391`" />"
 $sS2XML += "`n"
 $sS2XML += "</settings>"
 
-
 # Preview the settings2 string for testing
-Write-Host ($sS2XML | Out-String)
+# Write-Host ($sS2XML | Out-String)
 
-<# Testing video duration
-
-$Folder = 'C:\Path\To\Parent\Folder'
-$File = 'Video.mp4'
-$LengthColumn = 27
-$objShell = New-Object -ComObject Shell.Application 
-$objFolder = $objShell.Namespace($Folder)
-$objFile = $objFolder.ParseName($File)
-$Length = $objFolder.GetDetailsOf($objFile, $LengthColumn)
-
-#>
-
-<# Example of a single network TV entry
-
-    <setting id="Channel_1_type" value="1" />
-    <setting id="Channel_1_1" value="A&E" />
-    <setting id="Channel_1_changed" value="False" />
-    <setting id="Channel_1_time" value="35" />
-    <setting id="Channel_1_rulecount" value="1" />
-    <setting id="Channel_1_rule_1_id" value="12" />
-
-#>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-<#
 # Remove current settings2.xml if it exists.  It shouldn't, but double checking.
 $sFile = ($env:TEMP + "\PTV\settings2.xml")
 if (Test-Path -PathType Leaf $sFile) {
     # $sPath already exists
     Remove-Item $sFile -Force                                         # Delete $sFile
 }
-#>
+
+# Write settings2.xml to temp dir
+$sS2XML | Out-File -FilePath $sFile -Force
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Cleanup
 Disconnect-MySQL($conn)
