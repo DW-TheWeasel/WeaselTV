@@ -1,6 +1,6 @@
 <#
 WEASEL TV channel generator
-Alpha 0.1.1
+Alpha v0.1.1
 Required: https://dev.mysql.com/downloads/connector/net/
 #>
 
@@ -63,13 +63,6 @@ function Invoke-MySQLQuery($connMySQL, [string]$query) {
     # $result = Invoke-MySQLQuery $query
     # Write-Host ("Found " + $result.rows.count + " rows...")
     # $result | Format-Table
-}
-
-function Invoke-MySQLScalar([string]$query) {
-    # MySQLScalar - Select etc query where a single value of return data is expected
-    $cmd = $SQLconn.CreateCommand()                                             # Create command object
-    $cmd.CommandText = $query                                                   # Load query into object
-    $cmd.ExecuteScalar()                                                        # Execute command
 }
 
 function Get-MediaLength ([string]$path) {
