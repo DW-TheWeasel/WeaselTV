@@ -1,5 +1,6 @@
 <#
 WEASEL TV channel generator
+Alpha 0.1.1
 Required: https://dev.mysql.com/downloads/connector/net/
 #>
 
@@ -84,8 +85,14 @@ function Get-MediaLength ([string]$path) {
     $objFolder = $objShell.Namespace($Folder)
     $objFile = $objFolder.ParseName($File)
     $Length = $objFolder.GetDetailsOf($objFile, $LengthColumn)
-    $LengthInSec = [TimeSpan]::Parse($Length).TotalSeconds
-    $objShell.Dispose
+    #$LengthInSec = [TimeSpan]::Parse($Length).TotalSeconds
+    try {
+        $LengthInSec = [TimeSpan]::Parse($Length).TotalSeconds
+    }
+    catch {
+        $LengthInSec = 0
+    }
+    $objShell = $null
     return $LengthInSec
 }
 
@@ -101,56 +108,66 @@ $conn = Connect-MySQL $user $pass $MySQLHost $port $database
 
 # Queries
 $sQueryNetworks = "SELECT DISTINCT
-    C14
+    myvideos107.tvshow.C14
 FROM
-    tvshow
+    myvideos107.tvshow
 ORDER BY LOWER(C14)
 ;"
 
 $sQueryIndex = "SELECT DISTINCT
-    C00, tvshow.idShow
+    C00, myvideos107.tvshow.idShow
 FROM
-    tvshow
+    myvideos107.tvshow
 ORDER BY LOWER(C00)
 ;"
 
 $sQueryNetworkEps = "SELECT 
-    episode.c09,
-    episode.c12,
-    episode.c13,
-    episode.c00,
-    episode.c01,
-    episode.c18,
-    tvshow.c00
+    *
 FROM
-    episode
+    myvideos107.episode
         INNER JOIN
-    tvshow ON episode.idShow = tvshow.idShow
+    myvideos107.tvshow ON myvideos107.episode.idShow = myvideos107.tvshow.idShow
 WHERE
-    tvshow.c14 LIKE '???'
+    myvideos107.tvshow.c14 LIKE '???'
 ;"                                                                                                      # tvshow.C00="Show Title"  tvshow.C14="Studio"
 
 $sQueryEpisodes = "SELECT 
-    c09, c12, c13, c00, c01, c18
+    *
 FROM
-    episode
+    myvideos107.episode
 WHERE
-    episode.idShow = ???
-;"                                                                                                      # C09="Episode length in minutes (depricated, need to get media info directly)"  C12="Season Number"  C13="Episode Number"  C00="Episode Title" C01="Plot Summary"  C18="Path to episode file" 
+    myvideos107.episode.idShow = ???
+;"                                                                                                      # C09="Episode length in minutes (we will populate this as cache)"  C12="Season Number"  C13="Episode Number"  C00="Episode Title" C01="Plot Summary"  C18="Path to episode file" 
+
+$sQueryUpdateEpLength = "UPDATE
+    myvideos107.episode 
+SET 
+    myvideos107.episode.c09 = ???LENGTH???
+WHERE
+    myvideos107.episode.idEpisode = ???ID???
+;"                                                                                                      # Update c09 episode length (using this as cache)
+
+$sQueryUpdateMovieLength = "UPDATE
+myvideos107.movie 
+SET 
+myvideos107.movie.c11 = ???LENGTH???
+WHERE
+myvideos107.movie.idMovie = ???ID???
+;"                                                                                                      # Update c11 movie length (using this as cache)
 
 $sQueryGenreCh = "SELECT 
-    currentgenre, COUNT(*)
+currentgenre, COUNT(*)
 FROM
-    myvideos107.movie t1
-        JOIN
-    (SELECT DISTINCT
-        genre.name AS currentgenre
-    FROM
-        myvideos107.genre) t2 ON t1.c14 LIKE CONCAT('%', currentgenre, '%')
+myvideos107.movie t1
+    JOIN
+(SELECT DISTINCT
+    myvideos107.genre.name AS currentgenre
+FROM
+    myvideos107.genre) t2 ON t1.c14 LIKE CONCAT('%', currentgenre, '%')
 WHERE
-    t1.c22 NOT LIKE '%/Media/Video/Ad%'
+t1.c22 NOT LIKE '%/Media/Video/Ad%'
 GROUP BY currentgenre
-ORDER BY currentgenre
+ORDER BY COUNT(*) DESC
 LIMIT 15
 ;"                                                                                                      # Gets top 15 genres found in movie.c14 genre string (this is what smartplaylists use, so we need to use it instead of the genre table)
 
@@ -179,6 +196,7 @@ WHERE
 $aTvNetworks = Invoke-MySQLQuery $conn $sQueryNetworks                                                  # TV Networks
 $aTvIndex = Invoke-MySQLQuery $conn $sQueryIndex                                                        # TV Index
 $aGenreList = Invoke-MySQLQuery $conn $sQueryGenreCh                                                    # Top movie genres
+
 
 
 # Parse TV Networks, Network Episodes
@@ -229,6 +247,18 @@ foreach ($sPath in $aPaths) {
 # Create m3u array
 $aM3u = @{}
 
+# Create xsp array
+$aXSP = @{}
+
+# Running totals
+$iTotalShows = 0
+$iTotalNetworks = 0
+$iTotalShowEps = 0
+$iTotalNetworkEps = 0
+$activity2 = ''
+$activity3 = ''
+Write-Progress -activity "Totals:"  -status ("Networks: " + $iTotalNetworks + " | Network Episodes: " + $iTotalNetworkEps + " | Shows: " + $iTotalShows + " | Episodes: " + $iTotalShowEps) -Id 1
+
 # Build our settings2.xml string to later be written to file
 $sS2XML = ""                                                                                            # Create openining XML
 $sS2XML += "<settings>"
@@ -240,6 +270,7 @@ $sS2XML += "`n"
 $iCount = 1
 foreach ($network in $aNetworkEpisodes.GetEnumerator() | Sort-Object Name) {
     if ([string]::IsNullOrEmpty($network.key)) {continue}		                                        # Skip blanks (first entry from query results always seems to be blank)
+    $iTotalNetworks++
     # if ($iCount -lt 4) {$iCount++;continue} # skip for testing
     $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"1`" />")
     $sS2XML += "`n"
@@ -256,30 +287,71 @@ foreach ($network in $aNetworkEpisodes.GetEnumerator() | Sort-Object Name) {
     
     if (($network.Value.c001 | Get-Unique).count -gt 1) {
         $sortednetwork = $network.Value | Get-Random -Count ([int]::MaxValue)                           # Randomize network episodes if more than 1 show is present on the network
-    } else {
+    }
+    else {
         $sortednetwork = $network.Value                                                                 # Do not sort if only 1 show on the network
     }
-    
+
+    $activity2 = "Scanning TV network"
+    Write-Progress -activity $activity2 -status $network.key -Id 2 -percentComplete (($iCount / $aNetworkEpisodes.Count) * 100)
+
+    $iSubCount = 0
+    $sShows = ''
+    $iTotalCount = $sortednetwork.Count
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+
+    $stringBuilder = New-Object System.Text.StringBuilder
     foreach ($episode in $sortednetwork.GetEnumerator()) {
         if ([string]::IsNullOrEmpty($episode.c18)) {continue}
+        $iTotalNetworkEps++
+        if ($episode.c09 -eq 0) {
+            $MediaLength = Get-MediaLength($episode.c18)
+            if ($MediaLength -ne 0) {
+                # Update cache in db at c09
+                $sTempQuery = $sQueryUpdateEpLength.Replace("???LENGTH???", $MediaLength).Replace("???ID???", $episode.idEpisode)
+                Invoke-MySQLNonQuery $conn $sTempQuery
+            }
+        }
+        else {
+            # Use cached media length/duration
+            $MediaLength = $episode.c09
+        }
+        
+
         if ($episode.c12.Length -eq 1) {$sSeason = '0' + $episode.c12} else {$sSeason = $episode.c12}   # Format SS
         if ($episode.c13.Length -eq 1) {$sEpisode = '0' + $episode.c13} else {$sEpisode = $episode.c13} # Format EE
 
-        $sM3uEntry = '#EXTINF:'                                                                         # #EXTINF:
-        $sM3uEntry += Get-MediaLength($episode.c18)                                                     # Media length/duration
-        $sM3uEntry += ','                                                                               # ,
-        $sM3uEntry += $episode.c001.Replace("`t"," ").Replace("`n"," ").Replace("`r"," ")               # Show name
-        $sM3uEntry += '//'                                                                              # //
-        $sM3uEntry += ('S' + $sSeason + 'E' + $sEpisode)                                                # SxxExx
-        $sM3uEntry += ' - '                                                                             #  - 
-        $sM3uEntry += $episode.c00.Replace("`t"," ").Replace("`n"," ").Replace("`r"," ")                # Episode name
-        $sM3uEntry += '//'                                                                              # //
-        $sM3uEntry += $episode.c01.Replace("`t"," ").Replace("`n"," ").Replace("`r"," ")                # Episode description
-        $sM3uEntry += "`n"                                                                              # New line
-        $sM3uEntry += $episode.c18                                                                      # File with full path
-        $sM3uEntry += "`n"                                                                              # New line
+        $null = $stringBuilder.Append('#EXTINF:')                                                                        # #EXTINF:
+        $null = $stringBuilder.Append($MediaLength)                                                                      # Media length/duration
+        $null = $stringBuilder.Append(',')                                                                               # ,
+        $null = $stringBuilder.Append($episode.c001.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))            # Show name
+        $null = $stringBuilder.Append('//')                                                                              # //
+        $null = $stringBuilder.Append(('S' + $sSeason + 'E' + $sEpisode))                                                # SxxExx
+        $null = $stringBuilder.Append(' - ')                                                                             #  - 
+        $null = $stringBuilder.Append($episode.c00.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))             # Episode name
+        $null = $stringBuilder.Append('//')                                                                              # //
+        $null = $stringBuilder.Append($episode.c01.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))             # Episode description
+        $null = $stringBuilder.Append("`n")                                                                              # New line
+        $null = $stringBuilder.Append($episode.c18)                                                                      # File with full path
+        $null = $stringBuilder.Append("`n")                                                                              # New line
+        $iSubCount++
+        # Progress
+        if (-Not($sShows -match $episode.c001.Replace("`t", " ").Replace("`n", " ").Replace("`r", " ").Replace("*", "").Replace("(", "").Replace(")", ""))) {
+            $sShows = $sShows + $episode.c001.Replace("`t", " ").Replace("`n", " ").Replace("`r", " ").Replace("*", "").Replace("(", "").Replace(")", "") + " | "
+        }
+        if ($sw.Elapsed.TotalMilliseconds -ge 10) {
+            $activity3 = ("Generating m3u (" + $iSubCount + "/" + $iTotalCount + ")for:")
+            Write-Progress -activity "Totals:"  -status ("Networks: " + $iTotalNetworks + " | Network Episodes: " + $iTotalNetworkEps + " | Shows: " + $iTotalShows + " | Episodes: " + $iTotalShowEps) -Id 1
+            Write-Progress -activity $activity3 -status $sShows -Id 3 -percentComplete (($iSubCount / $iTotalCount) * 100)
+            $sw.Reset(); $sw.Start()
+        }
+
     }
+    $sw = $null
+
     # Add m3u data to $aM3u
+    $sM3uEntry = $stringBuilder.ToString()
+    $stringBuilder = $null
     $aM3u.Add('channel_' + $iCount + '.m3u', $sM3uEntry)
     $iCount++
 }
@@ -288,6 +360,7 @@ foreach ($network in $aNetworkEpisodes.GetEnumerator() | Sort-Object Name) {
 $iCount = 100
 foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
     if ([string]::IsNullOrEmpty($tvShow.key)) {continue}		                                        # Skip blanks (first entry from query results always seems to be blank)
+    $iTotalShows++
     $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"6`" />")
     $sS2XML += "`n"
     $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"" + $tvShow.key + "`" />")
@@ -300,25 +373,220 @@ foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
     $sS2XML += "`n"
     $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_rule_1_id`" value=`"12`" />")
     $sS2XML += "`n"
+
+    $activity2 = "Scanning TV shows"
+    Write-Progress -activity $activity2 -status $tvShow.key -Id 2 -percentComplete ((($iCount - 100) / $aTvShowEpisodes.Count) * 100)
+
+    $iSubCount = 0
+    $sShows = $tvShow.key
+    $iTotalCount = $tvShow.Value.Count
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    
+    $stringBuilder = New-Object System.Text.StringBuilder
+    foreach ($episode in $tvShow.Value.GetEnumerator()) {
+        if ([string]::IsNullOrEmpty($episode.c18)) {continue}
+        $iTotalShowEps++
+        if ($episode.c12.Length -eq 1) {$sSeason = '0' + $episode.c12} else {$sSeason = $episode.c12}   # Format SS
+        if ($episode.c13.Length -eq 1) {$sEpisode = '0' + $episode.c13} else {$sEpisode = $episode.c13} # Format EE
+        # Check for cached media length/duration in c09. Cache here if we have to look it up
+        if ($episode.c09 -eq 0) {
+            $MediaLength = Get-MediaLength($episode.c18)
+            if ($MediaLength -ne 0) {
+                # Update cache in db at c09
+                $sTempQuery = $sQueryUpdateEpLength.Replace("???LENGTH???", $MediaLength).Replace("???ID???", $episode.idEpisode)
+                Invoke-MySQLNonQuery $conn $sTempQuery
+            }
+        }
+        else {
+            # Use cached media length/duration
+            $MediaLength = $episode.c09
+        }
+        $null = $stringBuilder.Append('#EXTINF:')                                                                        # #EXTINF:
+        $null = $stringBuilder.Append($MediaLength)                                                                      # Media length/duration
+        $null = $stringBuilder.Append(',')                                                                               # ,
+        $null = $stringBuilder.Append($episode.c00.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))             # Episode name
+        $null = $stringBuilder.Append('//')                                                                              # //
+        $null = $stringBuilder.Append(('S' + $sSeason + 'E' + $sEpisode))                                                # SxxExx
+        $null = $stringBuilder.Append(' - ')                                                                             #  - 
+        $null = $stringBuilder.Append($tvShow.key.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))              # Show name
+        $null = $stringBuilder.Append('//')                                                                              # //
+        $null = $stringBuilder.Append($episode.c01.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))             # Episode description
+        $null = $stringBuilder.Append("`n")                                                                              # New line
+        $null = $stringBuilder.Append($episode.c18)                                                                      # File with full path
+        $null = $stringBuilder.Append("`n")                                                                              # New line
+        $iSubCount++
+        # Progress
+        if (-Not($sShows -match ("Season " + $sSeason))) {
+            $sShows = $sShows + " | " + ("Season " + $sSeason)
+        }   
+        if ($sw.Elapsed.TotalMilliseconds -ge 10) {
+            $activity3 = ("Generating m3u (" + $iSubCount + "/" + $iTotalCount + ")for:")
+            Write-Progress -activity "Totals:"  -status ("Networks: " + $iTotalNetworks + " | Network Episodes: " + $iTotalNetworkEps + " | Shows: " + $iTotalShows + " | Episodes: " + $iTotalShowEps) -Id 1
+            Write-Progress -activity $activity3 -status $sShows -Id 3 -percentComplete (($iSubCount / $iTotalCount) * 100)
+            $sw.Reset(); $sw.Start()
+        }
+    }
+    $sw = $null
+
+    # Add m3u data to $aM3u
+    $sM3uEntry = $stringBuilder.ToString()
+    $stringBuilder = $null
+    $aM3u.Add('channel_' + $iCount + '.m3u', $sM3uEntry)
     $iCount++
 }
 
 # Parse movie genre channels and enter them in to settings2.xml temp string
 $iCount = 900
+$iChannelPerGenre = 3
 foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
-    if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                            # Skip blanks (first entry from query results always seems to be blank)
-    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"0`" />")
-    $sS2XML += "`n"
-    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"special://profile/playlists/video/" + $genreCh.key + ".xsp`" />")
-    $sS2XML += "`n"
-    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
-    $sS2XML += "`n"
-    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
-    $sS2XML += "`n"
-    $iCount++
+    if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                         # Skip blanks (first entry from query results always seems to be blank)
+    for ($i = 1; $i -le $iChannelPerGenre; $i++) {
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"0`" />")
+        $sS2XML += "`n"
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"special://profile/playlists/video/" + $genreCh.key + ".xsp`" />")
+        $sS2XML += "`n"
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
+        $sS2XML += "`n"
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
+        $sS2XML += "`n"
+
+        $activity2 = "Scanning Movie Genres"
+        Write-Progress -activity $activity2 -status $genreCh.key -Id 2 -percentComplete ((($iCount - 900) / ($aGenreCh.Count * $iChannelPerGenre)) * 100)
+
+        $iSubCount = 0
+        $sShows = $tvShow.key
+        $iTotalCount = $genreCh.value.Count * $iChannelPerGenre
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    
+        $stringBuilder = New-Object System.Text.StringBuilder
+        $sortedgenre = $genreCh.value | Get-Random -Count ([int]::MaxValue)                             # Randomize network episodes if more than 1 show is present on the network
+        foreach ($GenreSet in $sortedgenre) {
+            if ([string]::IsNullOrEmpty($GenreSet.idMovie)) {continue}
+            if (([int]$GenreSet.c11 -lt 100) -or ([int]$GenreSet.c11 -gt 100000)) {
+                $MediaLength = Get-MediaLength($GenreSet.c22)
+                if ($MediaLength -ne 0) {
+                    # Update cache in db at c11
+                    $sTempQuery = $sQueryUpdateMovieLength.Replace("???LENGTH???", $MediaLength).Replace("???ID???", $GenreSet.idMovie)
+                    Invoke-MySQLNonQuery $conn $sTempQuery
+                }
+            }
+            else {
+                # Use cached media length/duration
+                $MediaLength = $GenreSet.c11
+            }
+            $null = $stringBuilder.Append('#EXTINF:')                                                                        # #EXTINF:
+            $null = $stringBuilder.Append($MediaLength)                                                                      # Media length/duration
+            $null = $stringBuilder.Append(',')                                                                               # ,
+            $null = $stringBuilder.Append($GenreSet.c00.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))            # Movie name
+            $null = $stringBuilder.Append('////')                                                                            # ////
+            $null = $stringBuilder.Append($GenreSet.c01.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))            # Movie description
+            $null = $stringBuilder.Append("`n")                                                                              # New line
+            $null = $stringBuilder.Append($GenreSet.c22)                                                                     # File with full path
+            $null = $stringBuilder.Append("`n")                                                                              # New line
+            $iSubCount++
+            # Progress
+            if ($sw.Elapsed.TotalMilliseconds -ge 100) {
+                $activity3 = ("Generating m3u (" + $iSubCount + "/" + $iTotalCount + ")for:")
+                Write-Progress -activity $activity3 -status $GenreSet.c00 -Id 3 -percentComplete (($iSubCount / $iTotalCount) * 100)
+                $sw.Reset(); $sw.Start()
+            }
+        }
+        $sw = $null
+        # Add m3u data to $aM3u
+        $sM3uEntry = $stringBuilder.ToString()
+        $stringBuilder = $null
+        $aM3u.Add('channel_' + $iCount + '.m3u', $sM3uEntry)
+        $iCount++
+    }
 }
 
-#MOVIES BY YEAR NEXT
+#
+#
+# MOVIES BY DECADE NEXT
+# TODO
+#
+
+
+# Create XSP
+foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
+    if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                         # Skip blanks (first entry from query results always seems to be blank)
+    $sXSP = ""
+    $sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    $sXSP += "`n"
+    $sXSP += '<smartplaylist type="movies">'
+    $sXSP += "`n"
+    $sXSP += '    <name>' + $genreCh.key + '</name>'
+    $sXSP += "`n"
+    $sXSP += '    <match>all</match>'
+    $sXSP += "`n"
+    $sXSP += '    <rule field="path" operator="doesnotcontain">'
+    $sXSP += "`n"
+    $sXSP += '        <value>/Media/Video/Ad</value>'
+    $sXSP += "`n"
+    $sXSP += '    </rule>'
+    $sXSP += "`n"
+    $sXSP += '    <rule field="genre" operator="contains">'
+    $sXSP += "`n"
+    $sXSP += '        <value>' + $genreCh.key + '</value>'
+    $sXSP += "`n"
+    $sXSP += '    </rule>'
+    $sXSP += "`n"
+    $sXSP += '    <group>none</group>'
+    $sXSP += "`n"
+    $sXSP += '    <order direction="ascending">random</order>'
+    $sXSP += "`n"
+    $sXSP += '</smartplaylist>'
+    $sXSP += "`n"
+    $aXSP.Add($genrech.Key + ".xsp", $sXSP)
+}
+
+# Add additional XSPs
+#Ad filtered
+$sXSP = ""
+$sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+$sXSP += "`n"
+$sXSP += '<smartplaylist type="movies">'
+$sXSP += "`n"
+$sXSP += '    <name>Movies</name>'
+$sXSP += "`n"
+$sXSP += '    <match>all</match>'
+$sXSP += "`n"
+$sXSP += '    <rule field="path" operator="doesnotcontain">'
+$sXSP += "`n"
+$sXSP += '        <value>/Media/Video/Ad</value>'
+$sXSP += "`n"
+$sXSP += '    </rule>'
+$sXSP += "`n"
+$sXSP += '    <group>none</group>'
+$sXSP += "`n"
+$sXSP += '    <order direction="ascending">sorttitle</order>'
+$sXSP += "`n"
+$sXSP += '</smartplaylist>'
+$sXSP += "`n"
+$aXSP.Add("Movies.xsp", $sXSP)
+#Ad
+$sXSP = ""
+$sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+$sXSP += "`n"
+$sXSP += '<smartplaylist type="movies">'
+$sXSP += "`n"
+$sXSP += '    <name>Adult-Movies</name>'
+$sXSP += "`n"
+$sXSP += '    <match>all</match>'
+$sXSP += "`n"
+$sXSP += '    <rule field="path" operator="contains">'
+$sXSP += "`n"
+$sXSP += '        <value>/Media/Video/Ad</value>'
+$sXSP += "`n"
+$sXSP += '    </rule>'
+$sXSP += "`n"
+$sXSP += '    <group>none</group>'
+$sXSP += "`n"
+$sXSP += '    <order direction="ascending">sorttitle</order>'
+$sXSP += "`n"
+$sXSP += '</smartplaylist>'
+$sXSP += "`n"
+$aXSP.Add("Adult-Movies.xsp", $sXSP)
 
 
 # Closing xml string
@@ -328,39 +596,116 @@ $sS2XML += "    <setting id=`"LastExitTime`" value=`"1495239391`" />"
 $sS2XML += "`n"
 $sS2XML += "</settings>"
 
-# Preview the settings2 string for testing
-# Write-Host ($sS2XML | Out-String)
+# Write settings.xml
+$sSXML = ''
+$sSXML += '<settings>'
+$sSXML += '    <setting id="AutoOff" value="0" />'
+$sSXML += '    <setting id="ChannelDelay" value="1" />'
+$sSXML += '    <setting id="ChannelLogoFolder" value="special://home/addons/script.pseudotv/resources/logos/" />'
+$sSXML += '    <setting id="ChannelResetSetting" value="4" />'
+$sSXML += '    <setting id="ChannelSharing" value="false" />'
+$sSXML += '    <setting id="ClipLength" value="4" />'
+$sSXML += '    <setting id="ClockMode" value="0" />'
+$sSXML += '    <setting id="ConfigDialog" value="" />'
+$sSXML += '    <setting id="CurrentChannel" value="1" />'
+$sSXML += '    <setting id="EnableComingUp" value="false" />'
+$sSXML += '    <setting id="ForceChannelReset" value="false" />'
+$sSXML += '    <setting id="HideClips" value="true" />'
+$sSXML += '    <setting id="InfoOnChange" value="false" />'
+$sSXML += '    <setting id="MediaLimit" value="7" />'
+$sSXML += '    <setting id="NumberColour" value="2" />'
+$sSXML += '    <setting id="SeekBackward" value="1" />'
+$sSXML += '    <setting id="SeekForward" value="1" />'
+$sSXML += '    <setting id="SettingsFolder" value="" />'
+$sSXML += '    <setting id="ShowChannelBug" value="false" />'
+$sSXML += '    <setting id="ShowEpgLogo" value="true" />'
+$sSXML += '    <setting id="ShowSeEp" value="true" />'
+$sSXML += '    <setting id="StartMode" value="2" />'
+$sSXML += '    <setting id="ThreadMode" value="1" />'
+$sSXML += '    <setting id="enable" value="false" />'
+$sSXML += '    <setting id="notify" value="true" />'
+$sSXML += '    <setting id="timer_amount" value="1" />'
+$sSXML += '</settings>'
 
-# Preview the aM3u array for testing
-# $aM3u.GetEnumerator() | Sort-Object Name
-
-# Remove current settings2.xml if it exists.  It shouldn't, but double checking.
-$sFile = ($env:TEMP + "\PTV\settings2.xml")
-if (Test-Path -PathType Leaf $sFile) {
-    # $sPath already exists
-    Remove-Item $sFile -Force                                                                           # Delete $sFile
-}
+# Write settings.xml to temp dir
+$sFile = ($env:TEMP + "\PTV\settings.xml")
+$Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $False
+[System.IO.File]::WriteAllLines($sFile, $sSXML, $Utf8NoBomEncoding)
 
 # Write settings2.xml to temp dir
-$sS2XML | Out-File -FilePath $sFile -Force
+$sFile = ($env:TEMP + "\PTV\settings2.xml")
+$Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $False
+[System.IO.File]::WriteAllLines($sFile, $sS2XML, $Utf8NoBomEncoding)
 
+# Write M3U Files to disk
+foreach ($file in $aM3u.GetEnumerator()) {
+    $sFile = ($env:TEMP + "\PTV\cache\" + $file.key)
+    $sTemp = "#EXTM3U"
+    $sTemp += "`n"
+    $sTemp += $file.Value
 
+    $Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $False
+    [System.IO.File]::WriteAllLines($sFile, $sTemp, $Utf8NoBomEncoding)
 
+    #$sTemp | Out-File -FilePath $sFile -Force
+}
 
+# Write XSP Files to disk
+foreach ($file in $aXSP.GetEnumerator()) {
+    $sFile = ($env:TEMP + "\MoviePlaylists\" + $file.key)
 
+    $Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding $False
+    [System.IO.File]::WriteAllLines($sFile, $file.Value, $Utf8NoBomEncoding)
 
+    #$file.Value | Out-File -FilePath $sFile -Force
+}
 
+# Temp file management (remove old temp dirs and recreate blank structure)
+$aPaths = @()                                                                                           # Array of paths to remove and recreate empty
+$aPaths += , ($env:APPDATA + "\Kodi\userdata\playlists\video")
+$aPaths += , ($env:APPDATA + "\Kodi\userdata\addon_data\script.pseudotv")
+foreach ($sPath in $aPaths) {
+    if (Test-Path -PathType Container $sPath) {
+        # $sPath already exists
+        Remove-Item $sPath -Force -Recurse                                                              # Delete $sPath
+        New-Item -ItemType Directory -Force -Path $sPath | Out-Null                                     # Recreate $sPath
+    }
+    else {
+        # $sPath doesn't exist
+        New-Item -ItemType Directory -Force -Path $sPath | Out-Null                                     # Create $sPath
+    }
+}
 
-
-
-
-
-
-
-
-
-
-
+# Copy files
+#Copy-Item ($env:TEMP + "\PTV\settings2.xml") -Destination ($env:APPDATA + "\Kodi\userdata\addon_data\script.pseudotv")
+Copy-Item ($env:TEMP + "\PTV\*") -Destination ($env:APPDATA + "\Kodi\userdata\addon_data\script.pseudotv") -Recurse
+Copy-Item ($env:TEMP + "\MoviePlaylists\*.xsp") -Destination ($env:APPDATA + "\Kodi\userdata\playlists\video") -Recurse
 
 # Cleanup
 Disconnect-MySQL($conn)
+
+#Wait
+Write-Progress -Activity $activity2 -Status "Ready" -Id 2 -Completed
+Write-Progress -Activity $activity3 -Status "Ready" -Id 3 -Completed
+
+$sWeaselTV = "`n`n`n`n`n`n`n`n                                                                             ,----,           
+                                                                           ,/   .``|           
+             .---.                                               ,--,    ,``   .'  :           
+            /. ./|                                             ,--.'|  ;    ;     /     ,---. 
+        .--'.  ' ;                                             |  | :.'___,/    ,'     /__./| 
+       /__./ \ : |                         .--.--.             :  : '|    :     | ,---.;  ; | 
+   .--'.  '   \' .   ,---.     ,--.--.    /  /    '     ,---.  |  ' |;    |.';  ;/___/ \  | | 
+  /___/ \ |    ' '  /     \   /       \  |  :  /``./    /     \ '  | |``----'  |  |\   ;  \ ' | 
+  ;   \  \;      : /    /  | .--.  .-. | |  :  ;_     /    /  ||  | :    '   :  ; \   \  \: | 
+   \   ;  ``      |.    ' / |  \__\/: . .  \  \    ``. .    ' / |'  : |__  |   |  '  ;   \  ' . 
+    .   \    .\  ;'   ;   /|  ,`" .--.; |   ``----.   \'   ;   /||  | '.'| '   :  |   \   \   ' 
+     \   \   ' \ |'   |  / | /  /  ,.  |  /  /``--'  /'   |  / |;  :    ; ;   |.'     \   ``  ; 
+      :   '  |--`" |   :    |;  :   .'   \'--'.     / |   :    ||  ,   /  '---'        :   \ | 
+       \   \ ;     \   \  / |  ,     .-./  ``--'---'   \   \  /  ---``-'                 '---`"  
+        '---`"       ``----'   ``--``---'                  ``----'                                 
+                                                                                              
+"
+$sWeaselTV
+
+Write-Host -NoNewLine 'Press any key to continue...';
+$null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown');
