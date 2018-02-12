@@ -816,7 +816,31 @@ $sWeaselTV = "`n`n`n`n`n`n`n`n                                                  
       :   '  |--`" |   :    |;  :   .'   \'--'.     / |   :    ||  ,   /  '---'        :   \ | 
        \   \ ;     \   \  / |  ,     .-./  ``--'---'   \   \  /  ---``-'                 '---`"  
         '---`"       ``----'   ``--``---'                  ``----'                                 
-                                                                                              
+                                    .----------------. 
+                                    | .--------------. |
+                                    | |   _    _     | |
+                                    | |  | |  | |    | |
+                                    | |  | |__| |_   | |
+                                    | |  |____   _|  | |
+                                    | |      _| |_   | |
+                                    | |     |_____|  | |
+                                    | |              | |
+     SSSSSSSSSSSSSSS                | '--------------' |                       ffffffffffffffff  
+     SS:::::::::::::::S              '----------------'                       f::::::::::::::::f 
+    S:::::SSSSSS::::::S                                                      f::::::::::::::::::f
+    S:::::S     SSSSSSS                                                      f::::::fffffff:::::f
+    S:::::S          nnnn  nnnnnnnn      aaaaaaaaaaaaa  rrrrr   rrrrrrrrr    f:::::f       ffffff
+    S:::::S          n:::nn::::::::nn    a::::::::::::a r::::rrr:::::::::r   f:::::f             
+     S::::SSSS       n::::::::::::::nn   aaaaaaaaa:::::ar:::::::::::::::::r f:::::::ffffff       
+      SS::::::SSSSS  nn:::::::::::::::n           a::::arr::::::rrrrr::::::rf::::::::::::f       
+        SSS::::::::SS  n:::::nnnn:::::n    aaaaaaa:::::a r:::::r     r:::::rf::::::::::::f       
+           SSSSSS::::S n::::n    n::::n  aa::::::::::::a r:::::r     rrrrrrrf:::::::ffffff       
+                S:::::Sn::::n    n::::n a::::aaaa::::::a r:::::r             f:::::f             
+                S:::::Sn::::n    n::::na::::a    a:::::a r:::::r             f:::::f             
+    SSSSSSS     S:::::Sn::::n    n::::na::::a    a:::::a r:::::r            f:::::::f            
+    S::::::SSSSSS:::::Sn::::n    n::::na:::::aaaa::::::a r:::::r            f:::::::f            
+    S:::::::::::::::SS n::::n    n::::n a::::::::::aa:::ar:::::r            f:::::::f            
+     SSSSSSSSSSSSSSS   nnnnnn    nnnnnn  aaaaaaaaaa  aaaarrrrrrr            fffffffff            
 "
 $sWeaselTV
 
