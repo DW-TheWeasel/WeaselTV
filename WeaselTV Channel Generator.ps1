@@ -173,29 +173,28 @@ WHERE
         AND myvideos107.movie.c14 LIKE '%???%'
 ;"
 
-<#
 $sQueryMoviesInDecade = "SELECT 
     *
 FROM
     myvideos107.movie
 WHERE
     myvideos107.movie.c22 NOT LIKE '%/Media/Video/Ad%'
-        AND myvideos107.movie.premiered >= '1970-01-01'
-        AND myvideos107.movie.premiered < '1980-01-01'
+        AND myvideos107.movie.premiered >= 'YYYY1-01-01'
+        AND myvideos107.movie.premiered < 'YYYY2-01-01'
 ;"
-#>
 
 # Query data
 $aTvNetworks = Invoke-MySQLQuery $conn $sQueryNetworks                                                  # TV Networks
 $aTvIndex = Invoke-MySQLQuery $conn $sQueryIndex                                                        # TV Index
 $aGenreList = Invoke-MySQLQuery $conn $sQueryGenreCh                                                    # Top movie genres
+$aDecadeList = ('1970', '1980', '1990', '2000', '2010')                                                     # Decade movie channels
 
 
 
 # Parse TV Networks, Network Episodes
 $aNetworkEpisodes = @{}                                                                                 # TV Show Episodes by Network hashtable array (.c001="Show Name", .c00="Episode Name")
 foreach ($network in $aTvNetworks) {
-    if ([string]::IsNullOrEmpty($network.C14)) {continue}		                                        # Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($network.C14)) {continue}		                                        # Skip blanks
     $sTemp = $sQueryNetworkEps.Replace('???', $network.C14)                                             # Build temp query for all TV Episodes for single Network by network.C14
     $aTemp = Invoke-MySQLQuery $conn $sTemp                                                             # Temp array/query for all TV Episodes for single Network by network.C14
     $aNetworkEpisodes.Add($network.C14, $aTemp)                                                         # Add network as key and array of episodes for value
@@ -204,7 +203,7 @@ foreach ($network in $aTvNetworks) {
 # Parse TV Shows, TV Index, Show Episodes
 $aTvShowEpisodes = @{}                                                                                  # TV Show Episodes by idShow hashtable array (key="Show Name", .c00="Episode Name")
 foreach ($index in $aTvIndex) {
-    if ([string]::IsNullOrEmpty($index.C00) -And [string]::IsNullOrEmpty($index.idShow)) {continue}		# Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($index.C00) -And [string]::IsNullOrEmpty($index.idShow)) {continue}		# Skip blanks
     $sTemp = $sQueryEpisodes.Replace('???', $index.idShow)                                              # Build temp query for all TV Episodes for single show by idShow
     $aTemp = Invoke-MySQLQuery $conn $sTemp                                                             # Temp array/query for all TV Episodes for single show by idShow
     $aTvShowEpisodes.Add($index.C00, $aTemp)                                                            # Add TV show name as key and array of episodes for value
@@ -213,10 +212,19 @@ foreach ($index in $aTvIndex) {
 # Parse genre movie channels
 $aGenreCh = @{}
 foreach ($genre in $aGenreList) {
-    if ([string]::IsNullOrEmpty($genre.currentgenre)) {continue}		                                # Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($genre.currentgenre)) {continue}		                                # Skip blanks
     $sTemp = $sQueryMoviesInGenre.Replace('???', $genre.currentgenre)                                   # Build temp query for all movies in a given genre from $aGenreList
     $aTemp = Invoke-MySQLQuery $conn $sTemp                                                             # Temp array/query for all movies in a given genre from $aGenreList
     $aGenreCh.Add($genre.currentgenre, $aTemp)                                                          # Add genre as key and array of movies for value
+}
+
+# Parse decade movie channels
+$aDecadeCh = @{}
+foreach ($decade in $aDecadeList) {
+    if ([string]::IsNullOrEmpty($decade)) {continue}		                                            # Skip blanks
+    $sTemp = $sQueryMoviesInDecade.Replace('YYYY1', [int]$decade).Replace('YYYY2', [int]$decade + 10)   # Build temp query for all movies in a given decade
+    $aTemp = Invoke-MySQLQuery $conn $sTemp                                                             # Temp array/query for all movies in a given decade
+    $aDecadeCh.Add([string]$decade, $aTemp)                                                             # Add decade as key and array of movies for value
 }
 
 # Temp file management (remove old temp dirs and recreate blank structure)
@@ -261,8 +269,9 @@ $sS2XML += "`n"
 
 # Parse TV networks and enter channel entries to settings2.xml temp string
 $iCount = 1
+$iCurCh = $iCount
 foreach ($network in $aNetworkEpisodes.GetEnumerator() | Sort-Object Name) {
-    if ([string]::IsNullOrEmpty($network.key)) {continue}		                                        # Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($network.key)) {continue}		                                        # Skip blanks
     $iTotalNetworks++
     # if ($iCount -lt 4) {$iCount++;continue} # skip for testing
     $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"1`" />")
@@ -286,7 +295,7 @@ foreach ($network in $aNetworkEpisodes.GetEnumerator() | Sort-Object Name) {
     }
 
     $activity2 = "Scanning TV network"
-    Write-Progress -activity $activity2 -status $network.key -Id 2 -percentComplete (($iCount / $aNetworkEpisodes.Count) * 100)
+    Write-Progress -activity $activity2 -status $network.key -Id 2 -percentComplete ((($iCount - $iCurCh) / $aNetworkEpisodes.Count) * 100)
 
     $iSubCount = 0
     $sShows = ''
@@ -351,8 +360,9 @@ foreach ($network in $aNetworkEpisodes.GetEnumerator() | Sort-Object Name) {
 
 # Parse TV series and enter channel entries to settings2.xml temp string
 $iCount = 100
+$iCurCh = $iCount
 foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
-    if ([string]::IsNullOrEmpty($tvShow.key)) {continue}		                                        # Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($tvShow.key)) {continue}		                                        # Skip blanks
     $iTotalShows++
     $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"6`" />")
     $sS2XML += "`n"
@@ -368,7 +378,7 @@ foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
     $sS2XML += "`n"
 
     $activity2 = "Scanning TV shows"
-    Write-Progress -activity $activity2 -status $tvShow.key -Id 2 -percentComplete ((($iCount - 100) / $aTvShowEpisodes.Count) * 100)
+    Write-Progress -activity $activity2 -status $tvShow.key -Id 2 -percentComplete ((($iCount - $iCurCh) / $aTvShowEpisodes.Count) * 100)
 
     $iSubCount = 0
     $sShows = $tvShow.key
@@ -430,9 +440,10 @@ foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
 
 # Parse movie genre channels and enter them in to settings2.xml temp string
 $iCount = 900
+$iCurCh = $iCount
 $iChannelPerGenre = 3
 foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
-    if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                         # Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                         # Skip blanks
     for ($i = 1; $i -le $iChannelPerGenre; $i++) {
         $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"0`" />")
         $sS2XML += "`n"
@@ -444,10 +455,9 @@ foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
         $sS2XML += "`n"
 
         $activity2 = "Scanning Movie Genres"
-        Write-Progress -activity $activity2 -status $genreCh.key -Id 2 -percentComplete ((($iCount - 900) / ($aGenreCh.Count * $iChannelPerGenre)) * 100)
+        Write-Progress -activity $activity2 -status $genreCh.key -Id 2 -percentComplete ((($iCount - $iCurCh) / ($aGenreCh.Count * $iChannelPerGenre)) * 100)
 
         $iSubCount = 0
-        $sShows = $tvShow.key
         $iTotalCount = $genreCh.value.Count * $iChannelPerGenre
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
     
@@ -493,16 +503,73 @@ foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
     }
 }
 
-#
-#
-# MOVIES BY DECADE NEXT
-# TODO
-#
+# Parse movie decade channels and enter them in to settings2.xml temp string
+$iCurCh = $iCount
+$iChannelPerDecade = 3
+foreach ($decadeCh in $aDecadeCh.GetEnumerator() | Sort-Object Name) {
+    if ([string]::IsNullOrEmpty($decadeCh.key)) {continue}		                                         # Skip blanks
+    for ($i = 1; $i -le $iChannelPerDecade; $i++) {
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"0`" />")
+        $sS2XML += "`n"
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"special://profile/playlists/video/" + $decadeCh.key + ".xsp`" />")
+        $sS2XML += "`n"
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
+        $sS2XML += "`n"
+        $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
+        $sS2XML += "`n"
 
+        $activity2 = "Scanning Movie Decades"
+        Write-Progress -activity $activity2 -status $decadeCh.key -Id 2 -percentComplete ((($iCount - $iCurCh) / ($aDecadeCh.Count * $iChannelPerDecade)) * 100)
 
-# Create XSP
+        $iSubCount = 0
+        $iTotalCount = $decadeCh.value.Count * $iChannelPerDecade
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    
+        $stringBuilder = New-Object System.Text.StringBuilder
+        $sorteddecade = $decadeCh.value | Get-Random -Count ([int]::MaxValue)                             # Randomize network episodes if more than 1 show is present on the network
+        foreach ($DecadeSet in $sorteddecade) {
+            if ([string]::IsNullOrEmpty($DecadeSet.idMovie)) {continue}
+            if (([int]$DecadeSet.c11 -lt 100) -or ([int]$DecadeSet.c11 -gt 100000)) {
+                $MediaLength = Get-MediaLength($DecadeSet.c22)
+                if ($MediaLength -ne 0) {
+                    # Update cache in db at c11
+                    $sTempQuery = $sQueryUpdateMovieLength.Replace("???LENGTH???", $MediaLength).Replace("???ID???", $DecadeSet.idMovie)
+                    Invoke-MySQLNonQuery $conn $sTempQuery
+                }
+            }
+            else {
+                # Use cached media length/duration
+                $MediaLength = $DecadeSet.c11
+            }
+            $null = $stringBuilder.Append('#EXTINF:')                                                                        # #EXTINF:
+            $null = $stringBuilder.Append($MediaLength)                                                                      # Media length/duration
+            $null = $stringBuilder.Append(',')                                                                               # ,
+            $null = $stringBuilder.Append($DecadeSet.c00.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))            # Movie name
+            $null = $stringBuilder.Append('////')                                                                            # ////
+            $null = $stringBuilder.Append($DecadeSet.c01.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))            # Movie description
+            $null = $stringBuilder.Append("`n")                                                                              # New line
+            $null = $stringBuilder.Append($DecadeSet.c22)                                                                     # File with full path
+            $null = $stringBuilder.Append("`n")                                                                              # New line
+            $iSubCount++
+            # Progress
+            if ($sw.Elapsed.TotalMilliseconds -ge 100) {
+                $activity3 = ("Generating m3u (" + $iSubCount + "/" + $iTotalCount + ")for:")
+                Write-Progress -activity $activity3 -status $DecadeSet.c00 -Id 3 -percentComplete (($iSubCount / $iTotalCount) * 100)
+                $sw.Reset(); $sw.Start()
+            }
+        }
+        $sw = $null
+        # Add m3u data to $aM3u
+        $sM3uEntry = $stringBuilder.ToString()
+        $stringBuilder = $null
+        $aM3u.Add('channel_' + $iCount + '.m3u', $sM3uEntry)
+        $iCount++
+    }
+}
+
+# Create genre XSPs
 foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
-    if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                         # Skip blanks (first entry from query results always seems to be blank)
+    if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                         # Skip blanks
     $sXSP = ""
     $sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
     $sXSP += "`n"
@@ -532,6 +599,46 @@ foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
     $sXSP += "`n"
     $aXSP.Add($genrech.Key + ".xsp", $sXSP)
 }
+
+# Create decade XSPs
+foreach ($decadeCh in $aDecadeCh.GetEnumerator() | Sort-Object Name) {
+    if ([string]::IsNullOrEmpty($decadeCh.key)) {continue}		                                         # Skip blanks
+    $sXSP = ""
+    $sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+    $sXSP += "`n"
+    $sXSP += '<smartplaylist type="movies">'
+    $sXSP += "`n"
+    $sXSP += '    <name>' + ($decadeCh.key) + 's' + '</name>'
+    $sXSP += "`n"
+    $sXSP += '    <match>all</match>'
+    $sXSP += "`n"
+    $sXSP += '    <rule field="path" operator="doesnotcontain">'
+    $sXSP += "`n"
+    $sXSP += '        <value>/Media/Video/Ad</value>'
+    $sXSP += "`n"
+    $sXSP += '    </rule>'
+    $sXSP += "`n"
+    $sXSP += '    <rule field="year" operator="greaterthan">'
+    $sXSP += "`n"
+    $sXSP += '        <value>' + ([int]$decadeCh.key - 1) + '</value>'
+    $sXSP += "`n"
+    $sXSP += '    </rule>'
+    $sXSP += "`n"
+    $sXSP += '    <rule field="year" operator="lessthan">'
+    $sXSP += "`n"
+    $sXSP += '        <value>' + ([int]$decadeCh.key + 10) + '</value>'
+    $sXSP += "`n"
+    $sXSP += '    </rule>'
+    $sXSP += "`n"
+    $sXSP += '    <order direction="ascending">random</order>'
+    $sXSP += "`n"
+    $sXSP += '</smartplaylist>'
+    $sXSP += "`n"
+    $aXSP.Add($decadeCh.key + ".xsp", $sXSP)
+}
+
+
+
 
 # Add additional XSPs
 #Ad filtered
@@ -563,7 +670,7 @@ $sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
 $sXSP += "`n"
 $sXSP += '<smartplaylist type="movies">'
 $sXSP += "`n"
-$sXSP += '    <name>Adult-Movies</name>'
+$sXSP += '    <name>Adult</name>'
 $sXSP += "`n"
 $sXSP += '    <match>all</match>'
 $sXSP += "`n"
@@ -579,8 +686,24 @@ $sXSP += '    <order direction="ascending">sorttitle</order>'
 $sXSP += "`n"
 $sXSP += '</smartplaylist>'
 $sXSP += "`n"
-$aXSP.Add("Adult-Movies.xsp", $sXSP)
-
+$aXSP.Add("Adult.xsp", $sXSP)
+#All movies
+$sXSP = ""
+$sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
+$sXSP += "`n"
+$sXSP += '<smartplaylist type="movies">'
+$sXSP += "`n"
+$sXSP += '    <name>All Movies</name>'
+$sXSP += "`n"
+$sXSP += '    <match>any</match>'
+$sXSP += "`n"
+$sXSP += '    <group>none</group>'
+$sXSP += "`n"
+$sXSP += '    <order direction="ascending">sorttitle</order>'
+$sXSP += "`n"
+$sXSP += '</smartplaylist>'
+$sXSP += "`n"
+$aXSP.Add("All Movies.xsp", $sXSP)
 
 # Closing xml string
 $sS2XML += "    <setting id=`"LastResetTime`" value=`"1495239376`" />"
