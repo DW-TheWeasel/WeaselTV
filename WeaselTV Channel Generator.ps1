@@ -441,7 +441,7 @@ foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
 # Parse movie genre channels and enter them in to settings2.xml temp string
 $iCount = 900
 $iCurCh = $iCount
-$iChannelPerGenre = 3
+$iChannelPerGenre = 2
 foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
     if ([string]::IsNullOrEmpty($genreCh.key)) {continue}		                                         # Skip blanks
     for ($i = 1; $i -le $iChannelPerGenre; $i++) {
