@@ -637,9 +637,6 @@ foreach ($decadeCh in $aDecadeCh.GetEnumerator() | Sort-Object Name) {
     $aXSP.Add($decadeCh.key + ".xsp", $sXSP)
 }
 
-
-
-
 # Add additional XSPs
 #Ad filtered
 $sXSP = ""
