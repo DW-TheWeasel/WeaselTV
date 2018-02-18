@@ -712,32 +712,59 @@ $sS2XML += "</settings>"
 # Write settings.xml
 $sSXML = ''
 $sSXML += '<settings>'
+$sSXML += "`n"
 $sSXML += '    <setting id="AutoOff" value="0" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ChannelDelay" value="1" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ChannelLogoFolder" value="special://home/addons/script.pseudotv/resources/logos/" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ChannelResetSetting" value="4" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ChannelSharing" value="false" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ClipLength" value="4" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ClockMode" value="0" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ConfigDialog" value="" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="CurrentChannel" value="1" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="EnableComingUp" value="false" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ForceChannelReset" value="false" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="HideClips" value="true" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="InfoOnChange" value="false" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="MediaLimit" value="7" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="NumberColour" value="2" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="SeekBackward" value="1" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="SeekForward" value="1" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="SettingsFolder" value="" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ShowChannelBug" value="false" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ShowEpgLogo" value="true" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ShowSeEp" value="true" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="StartMode" value="2" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="ThreadMode" value="2" />' # Changing to value 2 to avoid background xsp generation
+$sSXML += "`n"
 $sSXML += '    <setting id="enable" value="false" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="notify" value="true" />'
+$sSXML += "`n"
 $sSXML += '    <setting id="timer_amount" value="1" />'
+$sSXML += "`n"
 $sSXML += '</settings>'
 
 # Write settings.xml to temp dir
