@@ -734,7 +734,7 @@ $sSXML += '    <setting id="ShowChannelBug" value="false" />'
 $sSXML += '    <setting id="ShowEpgLogo" value="true" />'
 $sSXML += '    <setting id="ShowSeEp" value="true" />'
 $sSXML += '    <setting id="StartMode" value="2" />'
-$sSXML += '    <setting id="ThreadMode" value="1" />'
+$sSXML += '    <setting id="ThreadMode" value="2" />' # Changing to value 2 to avoid background xsp generation
 $sSXML += '    <setting id="enable" value="false" />'
 $sSXML += '    <setting id="notify" value="true" />'
 $sSXML += '    <setting id="timer_amount" value="1" />'
