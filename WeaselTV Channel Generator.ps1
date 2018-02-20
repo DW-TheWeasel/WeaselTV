@@ -1,6 +1,6 @@
 <#
 WEASEL TV channel generator
-Alpha v0.1.1
+Alpha v0.1.2
 Required: https://dev.mysql.com/downloads/connector/net/
 #>
 
