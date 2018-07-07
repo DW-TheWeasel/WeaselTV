@@ -1,6 +1,6 @@
 <#
 WEASEL TV channel generator
-Alpha v0.1.2
+Alpha v0.1.1
 Required: https://dev.mysql.com/downloads/connector/net/
 #>
 
@@ -159,6 +159,8 @@ FROM
     myvideos107.genre) t2 ON t1.c14 LIKE CONCAT('%', currentgenre, '%')
 WHERE
 t1.c22 NOT LIKE '%/Media/Video/Ad%'
+    AND t1.c22 NOT LIKE '%/Media/Video/Un%'
+    AND t1.c12 NOT LIKE '%X%'
 GROUP BY currentgenre
 ORDER BY COUNT(*) DESC
 LIMIT 15
@@ -170,6 +172,8 @@ FROM
     myvideos107.movie
 WHERE
     myvideos107.movie.c22 NOT LIKE '%/Media/Video/Ad%'
+        AND myvideos107.movie.c22 NOT LIKE '%/Media/Video/Un%'
+        AND myvideos107.movie.c12 NOT LIKE '%X%'
         AND myvideos107.movie.c14 LIKE '%???%'
 ;"
 
@@ -179,6 +183,8 @@ FROM
     myvideos107.movie
 WHERE
     myvideos107.movie.c22 NOT LIKE '%/Media/Video/Ad%'
+        AND myvideos107.movie.c22 NOT LIKE '%/Media/Video/Un%'
+        AND myvideos107.movie.c12 NOT LIKE '%X%'
         AND myvideos107.movie.premiered >= 'YYYY1-01-01'
         AND myvideos107.movie.premiered < 'YYYY2-01-01'
 ;"
@@ -189,7 +195,41 @@ $aTvIndex = Invoke-MySQLQuery $conn $sQueryIndex                                
 $aGenreList = Invoke-MySQLQuery $conn $sQueryGenreCh                                                    # Top movie genres
 $aDecadeList = ('1970', '1980', '1990', '2000', '2010')                                                     # Decade movie channels
 
-
+$aTvFavs = New-Object System.Collections.Generic.List[System.Object]
+$aTvFavs.Add("3rd Rock from the Sun")
+$aTvFavs.Add("American Dad!")
+$aTvFavs.Add("Archer (2009)")
+$aTvFavs.Add("Arrested Development")
+$aTvFavs.Add("Better Off Ted")
+$aTvFavs.Add("Bob's Burgers")
+$aTvFavs.Add("Brooklyn Nine-Nine")
+$aTvFavs.Add("Community")
+$aTvFavs.Add("Criminal Minds")
+$aTvFavs.Add("Criminal Minds: Beyond Borders")
+$aTvFavs.Add("Family Guy")
+$aTvFavs.Add("Futurama")
+$aTvFavs.Add("It's Always Sunny in Philadelphia")
+$aTvFavs.Add("King of the Hill")
+$aTvFavs.Add("M*A*S*H")
+$aTvFavs.Add("Malcolm in the Middle")
+$aTvFavs.Add("My Name Is Earl")
+$aTvFavs.Add("MythBusters")
+$aTvFavs.Add("NewsRadio")
+$aTvFavs.Add("Parks and Recreation")
+$aTvFavs.Add("Raising Hope")
+$aTvFavs.Add("Rick and Morty")
+$aTvFavs.Add("Scrubs")
+$aTvFavs.Add("Seinfeld")
+$aTvFavs.Add("South Park")
+$aTvFavs.Add("Spin City")
+$aTvFavs.Add("Superstore")
+$aTvFavs.Add("That '70s Show")
+$aTvFavs.Add("The Big Bang Theory")
+$aTvFavs.Add("The Drew Carey Show")
+$aTvFavs.Add("The Fresh Prince of Bel-Air")
+$aTvFavs.Add("The IT Crowd")
+$aTvFavs.Add("The Office (US)")
+$aTvFavs.Add("The Simpsons")
 
 # Parse TV Networks, Network Episodes
 $aNetworkEpisodes = @{}                                                                                 # TV Show Episodes by Network hashtable array (.c001="Show Name", .c00="Episode Name")
@@ -361,6 +401,7 @@ foreach ($network in $aNetworkEpisodes.GetEnumerator() | Sort-Object Name) {
 # Parse TV series and enter channel entries to settings2.xml temp string
 $iCount = 100
 $iCurCh = $iCount
+$stringBuilderFavs = New-Object System.Text.StringBuilder
 foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
     if ([string]::IsNullOrEmpty($tvShow.key)) {continue}		                                        # Skip blanks
     $iTotalShows++
@@ -417,6 +458,24 @@ foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
         $null = $stringBuilder.Append("`n")                                                                              # New line
         $null = $stringBuilder.Append($episode.c18)                                                                      # File with full path
         $null = $stringBuilder.Append("`n")                                                                              # New line
+
+
+        if ($aTvFavs.contains($tvShow.key)) {
+            # If this is a favorite show, add it to the playlist
+            $null = $stringBuilderFavs.Append('#EXTINF:')                                                                        # #EXTINF:
+            $null = $stringBuilderFavs.Append($MediaLength)                                                                      # Media length/duration
+            $null = $stringBuilderFavs.Append(',')                                                                               # ,
+            $null = $stringBuilderFavs.Append($tvShow.key.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))             # Episode name
+            $null = $stringBuilderFavs.Append('//')                                                                              # //
+            $null = $stringBuilderFavs.Append(('S' + $sSeason + 'E' + $sEpisode))                                                # SxxExx
+            $null = $stringBuilderFavs.Append(' - ')                                                                             #  - 
+            $null = $stringBuilderFavs.Append($episode.c00.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))              # Show name
+            $null = $stringBuilderFavs.Append('//')                                                                              # //
+            $null = $stringBuilderFavs.Append($episode.c01.Replace("`t", " ").Replace("`n", " ").Replace("`r", " "))             # Episode description
+            $null = $stringBuilderFavs.Append("`n")                                                                              # New line
+            $null = $stringBuilderFavs.Append($episode.c18)                                                                      # File with full path
+            $null = $stringBuilderFavs.Append("`n")                                                                              # New line
+        }
         $iSubCount++
         # Progress
         if (-Not($sShows -match ("Season " + $sSeason))) {
@@ -437,6 +496,29 @@ foreach ($tvShow in $aTvShowEpisodes.GetEnumerator() | Sort-Object Name) {
     $aM3u.Add('channel_' + $iCount + '.m3u', $sM3uEntry)
     $iCount++
 }
+
+# Add our fav channel built while searching shows above
+$iCount = 800
+$sM3uEntry = $stringBuilderFavs.ToString()
+For ($i=0; $i -le 5; $i++) {
+    #Add M3U entries
+    $aM3u.Add('channel_' + $iCount + '.m3u', $sM3uEntry)
+    #Add S2XML entries
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_type`" value=`"6`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_1`" value=`"" + "TV Favs" + "`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_changed`" value=`"False`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_time`" value=`"1`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_rulecount`" value=`"1`" />")
+    $sS2XML += "`n"
+    $sS2XML += ("    <setting id=`"Channel_" + $iCount + "_rule_1_id`" value=`"10`" />")
+    $sS2XML += "`n"
+    $iCount++
+}
+
 
 # Parse movie genre channels and enter them in to settings2.xml temp string
 $iCount = 900
@@ -729,7 +811,7 @@ $sSXML += '    <setting id="ClockMode" value="0" />'
 $sSXML += "`n"
 $sSXML += '    <setting id="ConfigDialog" value="" />'
 $sSXML += "`n"
-$sSXML += '    <setting id="CurrentChannel" value="1" />'
+$sSXML += '    <setting id="CurrentChannel" value="800" />'
 $sSXML += "`n"
 $sSXML += '    <setting id="EnableComingUp" value="false" />'
 $sSXML += "`n"
@@ -820,6 +902,10 @@ foreach ($sPath in $aPaths) {
 #Copy-Item ($env:TEMP + "\PTV\settings2.xml") -Destination ($env:APPDATA + "\Kodi\userdata\addon_data\script.pseudotv")
 Copy-Item ($env:TEMP + "\PTV\*") -Destination ($env:APPDATA + "\Kodi\userdata\addon_data\script.pseudotv") -Recurse
 Copy-Item ($env:TEMP + "\MoviePlaylists\*.xsp") -Destination ($env:APPDATA + "\Kodi\userdata\playlists\video") -Recurse
+
+# Set the settings and settings2 xml files to read only
+$source = $env:APPDATA + "\Kodi\userdata\addon_data\script.pseudotv\*"
+Set-ItemProperty -Path $source -include @("*.xml") -Name IsReadOnly -Value $true
 
 # Cleanup
 Disconnect-MySQL($conn)
