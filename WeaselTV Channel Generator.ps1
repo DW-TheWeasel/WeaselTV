@@ -157,10 +157,6 @@ myvideos107.movie t1
     myvideos107.genre.name AS currentgenre
 FROM
     myvideos107.genre) t2 ON t1.c14 LIKE CONCAT('%', currentgenre, '%')
-WHERE
-t1.c22 NOT LIKE '%/Media/Video/Ad%'
-    AND t1.c22 NOT LIKE '%/Media/Video/Un%'
-    AND t1.c12 NOT LIKE '%X%'
 GROUP BY currentgenre
 ORDER BY COUNT(*) DESC
 LIMIT 15
@@ -171,10 +167,7 @@ $sQueryMoviesInGenre = "SELECT
 FROM
     myvideos107.movie
 WHERE
-    myvideos107.movie.c22 NOT LIKE '%/Media/Video/Ad%'
-        AND myvideos107.movie.c22 NOT LIKE '%/Media/Video/Un%'
-        AND myvideos107.movie.c12 NOT LIKE '%X%'
-        AND myvideos107.movie.c14 LIKE '%???%'
+    myvideos107.movie.c14 LIKE '%???%'
 ;"
 
 $sQueryMoviesInDecade = "SELECT 
@@ -182,11 +175,8 @@ $sQueryMoviesInDecade = "SELECT
 FROM
     myvideos107.movie
 WHERE
-    myvideos107.movie.c22 NOT LIKE '%/Media/Video/Ad%'
-        AND myvideos107.movie.c22 NOT LIKE '%/Media/Video/Un%'
-        AND myvideos107.movie.c12 NOT LIKE '%X%'
-        AND myvideos107.movie.premiered >= 'YYYY1-01-01'
-        AND myvideos107.movie.premiered < 'YYYY2-01-01'
+    myvideos107.movie.premiered >= 'YYYY1-01-01'
+    AND myvideos107.movie.premiered < 'YYYY2-01-01'
 ;"
 
 # Query data
@@ -661,12 +651,6 @@ foreach ($genreCh in $aGenreCh.GetEnumerator() | Sort-Object Name) {
     $sXSP += "`n"
     $sXSP += '    <match>all</match>'
     $sXSP += "`n"
-    $sXSP += '    <rule field="path" operator="doesnotcontain">'
-    $sXSP += "`n"
-    $sXSP += '        <value>/Media/Video/Ad</value>'
-    $sXSP += "`n"
-    $sXSP += '    </rule>'
-    $sXSP += "`n"
     $sXSP += '    <rule field="genre" operator="contains">'
     $sXSP += "`n"
     $sXSP += '        <value>' + $genreCh.key + '</value>'
@@ -694,12 +678,6 @@ foreach ($decadeCh in $aDecadeCh.GetEnumerator() | Sort-Object Name) {
     $sXSP += "`n"
     $sXSP += '    <match>all</match>'
     $sXSP += "`n"
-    $sXSP += '    <rule field="path" operator="doesnotcontain">'
-    $sXSP += "`n"
-    $sXSP += '        <value>/Media/Video/Ad</value>'
-    $sXSP += "`n"
-    $sXSP += '    </rule>'
-    $sXSP += "`n"
     $sXSP += '    <rule field="year" operator="greaterthan">'
     $sXSP += "`n"
     $sXSP += '        <value>' + ([int]$decadeCh.key - 1) + '</value>'
@@ -720,7 +698,8 @@ foreach ($decadeCh in $aDecadeCh.GetEnumerator() | Sort-Object Name) {
 }
 
 # Add additional XSPs
-#Ad filtered
+<#
+#Example:
 $sXSP = ""
 $sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
 $sXSP += "`n"
@@ -732,7 +711,7 @@ $sXSP += '    <match>all</match>'
 $sXSP += "`n"
 $sXSP += '    <rule field="path" operator="doesnotcontain">'
 $sXSP += "`n"
-$sXSP += '        <value>/Media/Video/Ad</value>'
+$sXSP += '        <value>/Media/Video/NOTTHESE</value>'
 $sXSP += "`n"
 $sXSP += '    </rule>'
 $sXSP += "`n"
@@ -743,46 +722,7 @@ $sXSP += "`n"
 $sXSP += '</smartplaylist>'
 $sXSP += "`n"
 $aXSP.Add("Movies.xsp", $sXSP)
-#Ad
-$sXSP = ""
-$sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
-$sXSP += "`n"
-$sXSP += '<smartplaylist type="movies">'
-$sXSP += "`n"
-$sXSP += '    <name>Adult</name>'
-$sXSP += "`n"
-$sXSP += '    <match>all</match>'
-$sXSP += "`n"
-$sXSP += '    <rule field="path" operator="contains">'
-$sXSP += "`n"
-$sXSP += '        <value>/Media/Video/Ad</value>'
-$sXSP += "`n"
-$sXSP += '    </rule>'
-$sXSP += "`n"
-$sXSP += '    <group>none</group>'
-$sXSP += "`n"
-$sXSP += '    <order direction="ascending">sorttitle</order>'
-$sXSP += "`n"
-$sXSP += '</smartplaylist>'
-$sXSP += "`n"
-$aXSP.Add("Adult.xsp", $sXSP)
-#All movies
-$sXSP = ""
-$sXSP += '<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>'
-$sXSP += "`n"
-$sXSP += '<smartplaylist type="movies">'
-$sXSP += "`n"
-$sXSP += '    <name>All Movies</name>'
-$sXSP += "`n"
-$sXSP += '    <match>any</match>'
-$sXSP += "`n"
-$sXSP += '    <group>none</group>'
-$sXSP += "`n"
-$sXSP += '    <order direction="ascending">sorttitle</order>'
-$sXSP += "`n"
-$sXSP += '</smartplaylist>'
-$sXSP += "`n"
-$aXSP.Add("All Movies.xsp", $sXSP)
+#>
 
 # Closing xml string
 $sS2XML += "    <setting id=`"LastResetTime`" value=`"1495239376`" />"
@@ -811,7 +751,7 @@ $sSXML += '    <setting id="ClockMode" value="0" />'
 $sSXML += "`n"
 $sSXML += '    <setting id="ConfigDialog" value="" />'
 $sSXML += "`n"
-$sSXML += '    <setting id="CurrentChannel" value="800" />'
+$sSXML += '    <setting id="CurrentChannel" value="802" />'
 $sSXML += "`n"
 $sSXML += '    <setting id="EnableComingUp" value="false" />'
 $sSXML += "`n"
